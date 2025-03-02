@@ -1,33 +1,66 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
 
+// Define the type for a Reddit post
+interface RedditPost {
+  id: string;
+  title: string;
+  ups: number;
+  num_comments: number;
+  permalink: string;
+  subreddit: string;
+}
+
+// Define the type for the Reddit API response
+interface RedditApiResponse {
+  data: {
+    children: {
+      data: {
+        id: string;
+        title: string;
+        ups: number;
+        num_comments: number;
+        permalink: string;
+      };
+    }[];
+  };
+}
+
 function RedditPostAggregator() {
   const [subreddits, setSubreddits] = useState("");
-  const [posts, setPosts] = useState([]);
+  const [posts, setPosts] = useState<RedditPost[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch top posts from a single subreddit
-  const fetchTopPosts = useCallback(async (subreddit) => {
-    try {
-      const response = await fetch(
-        `https://www.reddit.com/r/${subreddit}/top.json?t=week&limit=10`
-      );
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch posts from r/${subreddit}. Status: ${response.status}`
+  const fetchTopPosts = useCallback(
+    async (subreddit: string): Promise<RedditPost[]> => {
+      try {
+        const response = await fetch(
+          `https://www.reddit.com/r/${subreddit}/top.json?t=week&limit=10`
         );
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch posts from r/${subreddit}. keep searching `
+            // `Failed to fetch posts from r/${subreddit}. Status: ${response.status}`
+          );
+        }
+        const data: RedditApiResponse = await response.json();
+        return data.data.children.map((post) => ({
+          id: post.data.id,
+          title: post.data.title,
+          ups: post.data.ups,
+          num_comments: post.data.num_comments,
+          permalink: post.data.permalink,
+          subreddit: subreddit,
+        }));
+      } catch (error) {
+        console.error(`Error fetching posts from r/${subreddit}:`, error);
+        throw error; // Re-throw the error to handle it in the caller
       }
-      const data = await response.json();
-      return data.data.children.map((post) => ({
-        ...post.data,
-        subreddit,
-      }));
-    } catch (error) {
-      console.error(`Error fetching posts from r/${subreddit}:`, error);
-      throw error; // Re-throw the error to handle it in the caller
-    }
-  }, []);
+    },
+    []
+  );
 
   // Fetch top posts from all subreddits
   const fetchAllPosts = useCallback(async () => {
@@ -52,7 +85,7 @@ function RedditPostAggregator() {
     } catch (error) {
       console.error("Error fetching posts:", error);
       setError(
-        error.message.includes("404")
+        error instanceof Error && error.message.includes("404")
           ? `Subreddit not found: ${error.message}`
           : "An error occurred while fetching posts. Please try again later."
       );
@@ -71,9 +104,9 @@ function RedditPostAggregator() {
   }, [subreddits, fetchAllPosts]);
 
   return (
-    <div style={{ maxWidth: "800px", margin: "0 auto", padding: "20px" }}>
-      <h1>Reddit Post Aggregator</h1>
-      <p>
+    <div className="max-w-4xl mx-auto p-6">
+      <h1 className="text-3xl font-bold mb-4">Reddit Post Aggregator</h1>
+      <p className="text-gray-700 mb-4">
         Enter subreddits (comma-separated) to fetch the top 10 posts from each:
       </p>
       <input
@@ -82,50 +115,41 @@ function RedditPostAggregator() {
         onChange={(e) => setSubreddits(e.target.value)}
         placeholder="e.g., reactjs, javascript, webdev"
         aria-label="Enter subreddits"
-        style={{ width: "100%", padding: "8px", marginBottom: "10px" }}
+        className="w-full p-2 border border-gray-300 rounded-md mb-4"
       />
       <button
         onClick={fetchAllPosts}
         disabled={isLoading}
         aria-label="Fetch posts"
-        style={{
-          padding: "8px 16px",
-          backgroundColor: isLoading ? "#ccc" : "#0079d3",
-          color: "#fff",
-          border: "none",
-          cursor: "pointer",
-        }}
+        className={`px-4 py-2 rounded-md text-white ${
+          isLoading
+            ? "bg-gray-400 cursor-not-allowed"
+            : "bg-blue-900 hover:bg-blue-800"
+        }`}
       >
         {isLoading ? "Fetching..." : "Fetch Posts"}
       </button>
 
-      {error && <p style={{ color: "red", marginTop: "10px" }}>{error}</p>}
+      {error && <p className="text-red-500 mt-4">{error}</p>}
 
-      <div style={{ marginTop: "20px" }}>
+      <div className="mt-6">
         {isLoading ? (
-          <p>Loading posts...</p>
+          <p className="text-gray-700">Loading posts...</p>
         ) : posts.length > 0 ? (
           posts.map((post) => (
-            <div
-              key={post.id}
-              style={{
-                marginBottom: "20px",
-                borderBottom: "1px solid #ccc",
-                paddingBottom: "10px",
-              }}
-            >
-              <h3>
+            <div key={post.id} className="mb-6 pb-4 border-b border-gray-200">
+              <h3 className="text-xl font-semibold">
                 <a
                   href={`https://reddit.com${post.permalink}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={`Read more about ${post.title}`}
-                  style={{ color: "#0079d3", textDecoration: "none" }}
+                  className="text-blue-600 hover:text-blue-800"
                 >
                   {post.title}
                 </a>
               </h3>
-              <p>
+              <p className="text-gray-600">
                 <strong>Subreddit:</strong> r/{post.subreddit} |{" "}
                 <strong>Upvotes:</strong> {post.ups} |{" "}
                 <strong>Comments:</strong> {post.num_comments}
@@ -133,7 +157,7 @@ function RedditPostAggregator() {
             </div>
           ))
         ) : (
-          <p>No posts found.</p>
+          <p className="text-gray-700">No posts found.</p>
         )}
       </div>
     </div>
